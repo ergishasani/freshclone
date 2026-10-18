@@ -1,6 +1,15 @@
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, lstat, copyFile, writeFile, rm, readFile } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  lstat,
+  copyFile,
+  writeFile,
+  rm,
+  readFile,
+  realpath,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -28,8 +37,13 @@ export interface CheckReport {
 
 /** Snapshot tracked working-tree files only; never mount the caller's repository. */
 export async function snapshotTrackedFiles(root: string, destination: string): Promise<void> {
-  const { stdout: top } = await exec('git', ['rev-parse', '--show-toplevel'], { cwd: root });
-  const repository = path.resolve(top.trim());
+  // Git can expand Windows 8.3 paths or resolve directory aliases. Compare paths
+  // in the same canonical form without resolving individual tracked symlinks.
+  const projectRoot = await realpath(root);
+  const { stdout: top } = await exec('git', ['rev-parse', '--show-toplevel'], {
+    cwd: projectRoot,
+  });
+  const repository = await realpath(path.resolve(top.trim()));
   const { stdout } = await exec('git', ['ls-files', '--cached', '--deduplicate', '-z'], {
     cwd: repository,
     maxBuffer: 8 * MAX_OUTPUT,
@@ -37,7 +51,7 @@ export async function snapshotTrackedFiles(root: string, destination: string): P
   let copied = 0;
   for (const entry of stdout.split('\0').filter(Boolean)) {
     const source = path.resolve(repository, entry);
-    const relative = path.relative(root, source);
+    const relative = path.relative(projectRoot, source);
     if (relative.startsWith(`..${path.sep}`) || relative === '..' || path.isAbsolute(relative))
       continue;
     const segments = relative.split(path.sep);
@@ -49,7 +63,7 @@ export async function snapshotTrackedFiles(root: string, destination: string): P
     )
       continue;
     // Check every component so an ancestor directory symlink cannot escape the project.
-    let component = root;
+    let component = projectRoot;
     let missing = false;
     for (const segment of segments) {
       component = path.join(component, segment);

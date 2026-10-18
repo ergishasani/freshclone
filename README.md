@@ -1,5 +1,7 @@
 # FreshClone
 
+[![CI](https://github.com/ergishasani/freshclone/actions/workflows/ci.yml/badge.svg?event=push)](https://github.com/ergishasani/freshclone/actions/workflows/ci.yml)
+
 **Your tests pass. Can a new contributor actually start the app?**
 
 FreshClone checks the setup commands in your README in a disposable Docker environment, then verifies that your application responds. Catch missing setup steps before a contributor has to report them.

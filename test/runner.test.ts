@@ -97,6 +97,29 @@ test('a subdirectory project cannot copy tracked sibling project files', async (
   });
 });
 
+test('canonicalizes a project directory alias before comparing Git paths', async (context) => {
+  await fixture(async (root, destination, base) => {
+    await file(root, 'README.md', 'aliased project');
+    await track(root);
+    const alias = path.join(base, 'repository-alias');
+    try {
+      // A junction gives Git and Node different spellings for the same path,
+      // reproducing the comparison problem caused by Windows 8.3 temp paths.
+      await symlink(root, alias, 'junction');
+    } catch (error) {
+      if (['EPERM', 'EACCES', 'ENOSYS'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+        context.skip('This host does not permit directory aliases; CI exercises this check.');
+        return;
+      }
+      throw error;
+    }
+
+    await snapshotTrackedFiles(alias, destination);
+
+    assert.equal(await readFile(path.join(destination, 'README.md'), 'utf8'), 'aliased project');
+  });
+});
+
 test('rejects tracked paths redirected through an ancestor symlink', async (context) => {
   await fixture(async (root, destination, base) => {
     await file(root, 'docs/setup.md', 'tracked documentation');
