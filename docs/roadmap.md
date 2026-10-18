@@ -19,7 +19,7 @@ The first goal is a reliable check of a small Node.js application's documented s
 - Improve diagnostics with precise README locations and concise failure context.
 - Add example projects with deliberately broken setup steps and documented fixes.
 - Evaluate stable JSON output and configuration compatibility before promising an API.
-- Prepare a reviewed tagged release and npm publication process.
+- Maintain reviewed versioned Action releases and prepare an npm publication process.
 
 ## Later candidates
 

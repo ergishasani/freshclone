@@ -156,12 +156,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: ergishasani/freshclone@main
+      - uses: ergishasani/freshclone@v0.1.0
 ```
 
 The composite action builds FreshClone from source and runs `check` in your checked-out project. It accepts `root` and `config` inputs for projects in a subdirectory or a differently named configuration file. It requires a Linux runner with Docker and registry access.
 
-`@main` follows development updates. Replace it with a reviewed FreshClone commit SHA when adopting it in a workflow that needs pinned dependencies. No release tag is required to try the initial source version.
+`@v0.1.0` selects the first versioned release. Replace it with a reviewed FreshClone commit SHA when adopting it in a workflow that needs pinned dependencies. Use `@main` only when you intend to follow ongoing development.
 
 Do not pass repository secrets to these checks or use a privileged event to execute a contributor's branch. See [SECURITY.md](SECURITY.md).
 
