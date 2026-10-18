@@ -1,0 +1,39 @@
+name: Feature request
+description: Propose a focused improvement based on a setup problem.
+title: '[Feature]: '
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What setup problem should FreshClone help catch?
+      description: Describe who encounters it and why current checks are insufficient.
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Concrete example
+      description: Share a small example or public repository. Remove secrets and private details.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+      description: Explain the input, expected result, and how a maintainer would use it.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and scope
+      description: Include workarounds, tradeoffs, and the smallest version that would help.
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Would you like to contribute?
+      options:
+        - I can help discuss or test the idea.
+        - I would like to implement a focused version.
+        - I am sharing the problem for consideration.

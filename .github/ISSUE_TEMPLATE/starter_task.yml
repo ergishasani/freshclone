@@ -1,0 +1,38 @@
+name: Starter task proposal
+description: Define a small contribution with clear completion criteria.
+title: '[Task]: '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to propose a focused task. Maintainers can help refine it before labeling it as a good first issue.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What useful behavior or documentation will improve?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Suggested scope
+      description: Identify relevant files or examples if known. State what is outside the task.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Completion criteria
+      description: Give observable criteria a contributor and reviewer can check.
+      placeholder: |
+        - [ ] The documented command works in the included example.
+        - [ ] A focused test covers the failure, if behavior changes.
+        - [ ] Relevant documentation is updated.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Helpful context
+      description: Relevant issues, reproduction steps, or suggested starting points.

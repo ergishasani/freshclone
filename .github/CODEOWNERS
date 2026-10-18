@@ -1,0 +1,6 @@
+# Execution and automation changes receive a maintainer review request.
+/.github/ @ergishasani
+/action.yml @ergishasani
+/src/runner.ts @ergishasani
+/package.json @ergishasani
+/package-lock.json @ergishasani

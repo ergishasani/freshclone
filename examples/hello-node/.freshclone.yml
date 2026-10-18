@@ -1,0 +1,13 @@
+version: 1
+readme: README.md
+image: node:24-bookworm-slim
+timeout: 60
+steps:
+  - block: install
+  - block: start
+    background: true
+expect:
+  http:
+    url: http://127.0.0.1:3000/
+    status: 200
+    timeout: 15

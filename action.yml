@@ -1,0 +1,48 @@
+name: FreshClone
+description: Verify README setup instructions in a clean Docker environment.
+author: ergishasani
+branding:
+  icon: terminal
+  color: green
+
+inputs:
+  root:
+    description: Project directory within the caller's checked-out workspace.
+    required: false
+    default: .
+  config:
+    description: Configuration path relative to the project root.
+    required: false
+    default: .freshclone.yml
+
+runs:
+  using: composite
+  steps:
+    - name: Check runner prerequisites
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" != "Linux" ]; then
+          echo "FreshClone's action requires a Linux runner with Docker."
+          exit 1
+        fi
+        docker info > /dev/null
+    - name: Set up Node.js
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: ${{ github.action_path }}/package-lock.json
+    - name: Build FreshClone
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npm ci --ignore-scripts
+        npm run build
+    - name: Check README onboarding
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        FRESHCLONE_ACTION_PATH: ${{ github.action_path }}
+        FRESHCLONE_PROJECT_ROOT: ${{ inputs.root }}
+        FRESHCLONE_CONFIG: ${{ inputs.config }}
+      run: node "$FRESHCLONE_ACTION_PATH/dist/src/cli.js" check --root "$FRESHCLONE_PROJECT_ROOT" --config "$FRESHCLONE_CONFIG"

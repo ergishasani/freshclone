@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Node ${{ matrix.node }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Check types
+        run: npm run typecheck
+      - name: Check formatting
+        run: npm run format:check
+      - name: Run unit tests
+        run: npm test
+      - name: Build CLI
+        run: npm run build
+
+  docker-smoke:
+    name: Docker onboarding checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Build CLI
+        run: npm run build
+      - name: Run working onboarding example
+        shell: bash
+        run: node dist/src/cli.js check --root examples/hello-node --json > "$RUNNER_TEMP/freshclone-passing.json"
+      - name: Confirm broken onboarding exits unsuccessfully
+        shell: bash
+        run: |
+          set +e
+          node dist/src/cli.js check --root examples/broken-node --json > "$RUNNER_TEMP/freshclone-failing.json"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "The intentionally broken example unexpectedly passed."
+            exit 1
+          fi
+      - name: Validate success and failure reports
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+
+          const readReport = (name) => JSON.parse(readFileSync(join(process.env.RUNNER_TEMP, name), 'utf8'));
+          const passing = readReport('freshclone-passing.json');
+          assert.equal(passing.ok, true, JSON.stringify(passing));
+          assert.ok(passing.steps.length >= 2, 'The successful example must execute README steps.');
+          assert.equal(passing.http?.ok, true, 'The successful example must reach its HTTP endpoint.');
+
+          const failing = readReport('freshclone-failing.json');
+          assert.equal(failing.ok, false, JSON.stringify(failing));
+          const failedStep = failing.steps.find((step) => step.status === 'failed');
+          assert.ok(failedStep, 'The broken example must identify the failed README step.');
+          assert.ok(failedStep.line > 0, 'The failed step must point to a README line.');
+          assert.ok(failedStep.output.length > 0, 'The failed step must preserve diagnostic output.');
+          console.log('Verified both successful onboarding and useful failure diagnostics.');
+          NODE
+      - name: Verify composite action against caller checkout
+        uses: ./
+        with:
+          root: examples/hello-node

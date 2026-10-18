@@ -1,0 +1,46 @@
+{
+  "name": "@ergishasani/freshclone",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Test your README setup instructions in a clean environment.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Ergis Hasani",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ergishasani/freshclone.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ergishasani/freshclone/issues"
+  },
+  "homepage": "https://github.com/ergishasani/freshclone#readme",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "freshclone": "dist/src/cli.js"
+  },
+  "files": [
+    "dist/src",
+    "assets",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run typecheck && npm run format:check && npm test"
+  },
+  "dependencies": {
+    "mdast-util-from-markdown": "^2.0.2",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3"
+  }
+}
