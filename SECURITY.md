@@ -2,7 +2,13 @@
 
 ## Supported versions
 
-FreshClone is in early development. Security fixes are developed on `main`; published package releases and long-term support branches are not available yet. When reporting a problem, include the commit or version you tested.
+FreshClone is in early development. Security fixes target `main` and the latest `0.1.x` release, currently `v0.1.0`. The CLI and configuration API may change before a stable `1.0` release. There are no long-term support branches or published npm packages. When reporting a problem, include the commit or version you tested.
+
+## Repository and release protections
+
+Changes to `main` require a pull request, successful checks on an up-to-date branch, a linear history, and resolved review conversations. All files have a maintainer code owner, and contributor changes require maintainer approval. Repository administrators can bypass review requirements only through a pull request, so the sole maintainer can merge their own changes after CI passes. Separate rules enforce CI and prevent direct pushes, force pushes, and deletion of `main`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the required checks and review process.
+
+Version tags matching `v*` cannot be moved or deleted. Releases are maintainer-controlled, and fixes use new version tags rather than changing an existing release tag.
 
 ## Report a vulnerability privately
 
@@ -32,6 +38,8 @@ Temporary file copying protects the source checkout from ordinary changes made b
 ## GitHub Actions guidance
 
 Use an ordinary `pull_request` workflow for contributor changes, with minimal permissions and no repository secrets passed to setup checks. Never use a privileged event such as `pull_request_target` to check out and run commands from a contributor's branch.
+
+The repository's default workflow token is read-only, and GitHub Actions is not allowed to create or approve pull requests. Workflows from outside contributors require maintainer approval before they run. That approval permits execution; it does not approve merging the contribution.
 
 Review workflow changes carefully. Avoid privileged containers, mounting host directories, exposing the Docker socket to the application, or making self-hosted runners available to untrusted contributors.
 

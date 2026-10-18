@@ -73,6 +73,18 @@ All contributions are made under the repository's [MIT License](LICENSE). A sepa
 
 Maintainers review correctness, clarity, test coverage appropriate to the change, and whether the change fits the project scope. Feedback may require narrowing an otherwise useful proposal.
 
+Changes to `main` must go through a pull request. Before merging, the branch must be up to date with `main`, all review conversations must be resolved, and these five GitHub Actions checks must pass:
+
+- `Node 22 / ubuntu-latest`
+- `Node 22 / windows-latest`
+- `Node 24 / ubuntu-latest`
+- `Node 24 / windows-latest`
+- `Docker onboarding checks`
+
+All files have a maintainer code owner. Contributor pull requests require one approving review from that owner; new commits dismiss previous approvals. The repository keeps a linear history, so use squash or rebase merging. Direct pushes, force pushes, and deletion of `main` are blocked.
+
+The sole maintainer cannot approve their own pull request. Repository administrators therefore have a narrow, pull-request-only bypass for the review rules, allowing the maintainer to merge a self-authored pull request after the required checks pass. This does not permit direct pushes or bypass the separate rules for CI, up-to-date branches, linear history, force pushes, or branch deletion.
+
 Use ordinary `pull_request` workflows for contributed code. Do not introduce a privileged trigger such as `pull_request_target` to execute a contributor's branch, and do not expose repository secrets to setup checks. See [SECURITY.md](SECURITY.md).
 
 ## Report a problem
