@@ -20,6 +20,9 @@ export async function initProject(
   options: InitOptions,
   prompt?: Prompt,
 ): Promise<void> {
+  // Resolve Windows short paths and directory aliases before comparing them to
+  // canonical parent/README paths. Keep containment checks on resolved paths.
+  root = await realpath(root);
   if (
     path.isAbsolute(configPath) ||
     path.win32.isAbsolute(configPath) ||

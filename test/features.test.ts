@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, writeFile, readFile, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -107,6 +107,40 @@ test('guided init creates a runnable server recipe using only selected blocks', 
     await assert.rejects(initProject(root, '.freshclone.yml', {}), /already exists/);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('init accepts a project directory alias while rejecting config directory escapes', async (context) => {
+  const base = await mkdtemp(path.join(tmpdir(), 'freshclone-init-alias-'));
+  const root = path.join(base, 'project');
+  const outside = path.join(base, 'outside');
+  const alias = path.join(base, 'project-alias');
+  try {
+    await Promise.all([mkdir(root), mkdir(outside)]);
+    await writeFile(
+      path.join(root, 'README.md'),
+      '<!-- freshclone:install -->\n```sh\necho ready\n```\n',
+    );
+    try {
+      await symlink(root, alias, 'junction');
+      await symlink(outside, path.join(root, 'escape'), 'junction');
+    } catch (error) {
+      if (['EPERM', 'EACCES', 'ENOSYS'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+        context.skip('This host does not permit directory aliases; CI exercises this check.');
+        return;
+      }
+      throw error;
+    }
+    await initProject(alias, '.freshclone.yml', {});
+    assert.deepEqual((await loadProject(root)).config.steps, [{ block: 'install' }]);
+    await assert.rejects(
+      initProject(alias, 'escape/new.yml', {}),
+      /must remain inside the project/,
+    );
+    await assert.rejects(access(path.join(outside, 'new.yml')), { code: 'ENOENT' });
+  } finally {
+    // base is this fixture's freshly created directory; links are not followed by rm.
+    await rm(base, { recursive: true, force: true });
   }
 });
 
