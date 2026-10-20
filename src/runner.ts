@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { StringDecoder } from 'node:string_decoder';
 import type { FreshcloneConfig } from './config.js';
 import type { ReadmeBlock } from './markdown.js';
 
@@ -20,6 +21,7 @@ const exec = promisify(execFile);
 const MAX_OUTPUT = 1024 * 1024;
 
 export interface CheckReport {
+  schemaVersion?: 1;
   ok: boolean;
   image: string;
   readme: string;
@@ -29,9 +31,21 @@ export interface CheckReport {
     status: 'passed' | 'failed' | 'skipped';
     exitCode?: number;
     output: string;
+    durationMs?: number;
   }>;
   http?: { url: string; status?: number; ok: boolean };
   error?: string;
+  failureKind?:
+    | 'configuration'
+    | 'infrastructure'
+    | 'setup'
+    | 'application-exit'
+    | 'readiness-timeout'
+    | 'expectation'
+    | 'interrupted'
+    | 'service-readiness';
+  scenario?: string;
+  assertions?: Array<{ name: string; ok: boolean; error?: string }>;
   durationMs: number;
 }
 
@@ -95,6 +109,8 @@ export function dockerArguments(
   control: string,
   image: string,
   name: string,
+  runtime: 'node' | 'python' = 'node',
+  network?: string,
 ): string[] {
   if ([workspace, control].some((value) => value.includes(','))) {
     throw new Error(
@@ -132,10 +148,11 @@ export function dockerArguments(
     `type=bind,source=${control},target=/freshclone,readonly`,
     '--workdir',
     '/workspace',
+    ...(network ? ['--network', network] : []),
     '--entrypoint',
-    'node',
+    runtime === 'python' ? 'python3' : 'node',
     image,
-    '/freshclone/container-runner.mjs',
+    runtime === 'python' ? '/freshclone/container-runner.py' : '/freshclone/container-runner.mjs',
   ];
 }
 
@@ -144,9 +161,11 @@ export async function runCheck(
   config: FreshcloneConfig,
   blocks: ReadmeBlock[],
   readme: string,
+  onProgress?: (message: string) => void,
 ): Promise<CheckReport> {
   const started = Date.now();
   const base: CheckReport = {
+    schemaVersion: 1,
     ok: false,
     image: config.image,
     readme,
@@ -157,22 +176,36 @@ export async function runCheck(
       output: '',
     })),
     durationMs: 0,
+    ...(config.scenario ? { scenario: config.scenario } : {}),
   };
-  const temporary = await mkdtemp(path.join(tmpdir(), 'freshclone-'));
+  let temporary: string | undefined;
   const name = `freshclone-${randomUUID()}`;
-  const cleanupContainer = () =>
-    exec('docker', ['rm', '--force', name], { timeout: 10000 }).catch(() => undefined);
+  const network = Object.keys(config.services ?? {}).length ? `${name}-network` : undefined;
+  const containers = [name];
+  const cleanupContainer = async () => {
+    await Promise.all(
+      containers.map((container) =>
+        exec('docker', ['rm', '--force', container], { timeout: 10000 }).catch(() => undefined),
+      ),
+    );
+  };
   let interrupted = false;
+  const controller = new AbortController();
   let dockerProcess: ReturnType<typeof spawn> | undefined;
   const interrupt = () => {
     interrupted = true;
+    controller.abort();
     dockerProcess?.kill();
     void cleanupContainer();
   };
   process.once('SIGINT', interrupt);
   process.once('SIGTERM', interrupt);
   try {
-    await exec('docker', ['info', '--format', '{{.OSType}}'], { timeout: 10000 })
+    temporary = await mkdtemp(path.join(tmpdir(), 'freshclone-'));
+    await exec('docker', ['info', '--format', '{{.OSType}}'], {
+      timeout: 10000,
+      signal: controller.signal,
+    })
       .then(({ stdout }) => {
         if (stdout.trim() !== 'linux')
           throw new Error('FreshClone requires Docker in Linux-container mode.');
@@ -187,21 +220,42 @@ export async function runCheck(
     await mkdir(workspace);
     await mkdir(control);
     await snapshotTrackedFiles(root, workspace);
-    const helper = await readFile(
-      new URL('../../assets/container-runner.mjs', import.meta.url),
-      'utf8',
-    );
-    await writeFile(path.join(control, 'container-runner.mjs'), helper);
+    const helperName = config.runtime === 'python' ? 'container-runner.py' : 'container-runner.mjs';
+    const helper = await readFile(new URL(`../../assets/${helperName}`, import.meta.url), 'utf8');
+    await writeFile(path.join(control, helperName), helper);
     await writeFile(path.join(control, 'plan.json'), JSON.stringify({ config, blocks, readme }));
     await Promise.all(
       blocks.map((block, index) =>
         writeFile(path.join(control, `step-${index}.sh`), `${block.command}\n`),
       ),
     );
-    const args = dockerArguments(workspace, control, config.image, name);
+    if (network) {
+      onProgress?.('Creating disposable service network');
+      await exec('docker', ['network', 'create', network], {
+        timeout: 10000,
+        signal: controller.signal,
+      });
+      for (const [alias, service] of Object.entries(config.services ?? {})) {
+        if (interrupted) throw new Error('Check interrupted.');
+        const serviceName = `${name}-${alias}`;
+        containers.push(serviceName);
+        onProgress?.(`Starting service ${alias}`);
+        await exec('docker', serviceArguments(serviceName, network, alias, service), {
+          timeout: 180000,
+          signal: controller.signal,
+        });
+        if (interrupted) throw new Error('Check interrupted.');
+      }
+    }
+    const args = dockerArguments(workspace, control, config.image, name, config.runtime, network);
     if (interrupted) throw new Error('Check interrupted.');
     const timeoutMs =
-      (config.timeout * blocks.length + (config.expect?.http.timeout ?? 0) + 180) * 1000;
+      (config.timeout * blocks.length +
+        (config.expect?.http?.timeout ?? 0) +
+        Object.values(config.services ?? {}).reduce((sum, service) => sum + service.timeout, 0) +
+        180) *
+      1000;
+    onProgress?.(`Starting ${config.image}`);
     const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>(
       (resolve, reject) => {
         const child = spawn('docker', args, {
@@ -210,17 +264,38 @@ export async function runCheck(
         });
         dockerProcess = child;
         let stdout = '';
+        const decoder = new StringDecoder('utf8');
+        // JSON can escape a retained log byte into six characters. Size transport
+        // for every step instead of truncating a valid multi-step report at 1 MiB.
+        const maxReport = MAX_OUTPUT + blocks.length * 65536 * 6;
         let stderr = '';
+        let progress = '';
         const timer = setTimeout(() => {
           child.kill();
           void cleanupContainer();
           reject(new Error('Docker execution exceeded its overall time limit.'));
         }, timeoutMs);
         child.stdout.on('data', (chunk: Buffer) => {
-          stdout = (stdout + chunk.toString()).slice(-MAX_OUTPUT);
+          stdout = (stdout + decoder.write(chunk)).slice(-maxReport);
         });
         child.stderr.on('data', (chunk: Buffer) => {
           stderr = (stderr + chunk.toString()).slice(-MAX_OUTPUT);
+          progress = (progress + chunk.toString()).slice(-MAX_OUTPUT);
+          let boundary: number;
+          while ((boundary = progress.indexOf('\n')) !== -1) {
+            const line = progress.slice(0, boundary);
+            progress = progress.slice(boundary + 1);
+            if (line.startsWith('FRESHCLONE_EVENT ')) {
+              try {
+                const event = JSON.parse(line.slice('FRESHCLONE_EVENT '.length)) as {
+                  message?: unknown;
+                };
+                if (typeof event.message === 'string') onProgress?.(event.message);
+              } catch {
+                /* Ignore malformed progress without corrupting the report. */
+              }
+            }
+          }
         });
         child.once('error', (error) => {
           clearTimeout(timer);
@@ -228,6 +303,7 @@ export async function runCheck(
         });
         child.once('close', (code) => {
           clearTimeout(timer);
+          stdout += decoder.end();
           resolve({ code, stdout, stderr });
         });
       },
@@ -238,16 +314,54 @@ export async function runCheck(
         `Docker did not return a report (exit ${result.code}): ${result.stderr.trim()}`,
       );
     const report = JSON.parse(result.stdout) as CheckReport;
+    if (typeof report.ok !== 'boolean' || !Array.isArray(report.steps))
+      throw new Error('Docker returned an invalid report.');
     // Do not claim success if the container itself reported failure.
     if (result.code !== 0) report.ok = false;
-    return { ...report, durationMs: Date.now() - started };
+    if (!report.ok && !report.failureKind) report.failureKind = 'infrastructure';
+    return { ...report, readme, scenario: config.scenario, durationMs: Date.now() - started };
   } catch (error) {
-    return { ...base, error: (error as Error).message, durationMs: Date.now() - started };
+    return {
+      ...base,
+      failureKind: interrupted ? 'interrupted' : 'infrastructure',
+      error: (error as Error).message,
+      durationMs: Date.now() - started,
+    };
   } finally {
     process.removeListener('SIGINT', interrupt);
     process.removeListener('SIGTERM', interrupt);
     await cleanupContainer();
+    if (network)
+      await exec('docker', ['network', 'rm', network], { timeout: 10000 }).catch(() => undefined);
     // The path is created by mkdtemp above and is never derived from repository input.
-    await rm(temporary, { recursive: true, force: true, maxRetries: 3 });
+    if (temporary) await rm(temporary, { recursive: true, force: true, maxRetries: 3 });
   }
+}
+
+export function serviceArguments(
+  name: string,
+  network: string,
+  alias: string,
+  service: import('./config.js').ServiceConfig,
+): string[] {
+  return [
+    'run',
+    '--detach',
+    '--rm',
+    '--name',
+    name,
+    '--network',
+    network,
+    '--network-alias',
+    alias,
+    '--security-opt=no-new-privileges',
+    '--memory',
+    '512m',
+    '--cpus',
+    '1',
+    '--pids-limit',
+    '256',
+    ...Object.entries(service.env ?? {}).flatMap(([key, value]) => ['--env', `${key}=${value}`]),
+    service.image,
+  ];
 }

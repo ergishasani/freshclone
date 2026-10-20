@@ -11,3 +11,19 @@ expect:
     url: http://127.0.0.1:3000/
     status: 200
     timeout: 15
+
+scenarios:
+  production:
+    steps:
+      - block: install
+      - block: build
+      - block: start
+        background: true
+    expect:
+      http:
+        url: http://127.0.0.1:3000/
+        contains: Hello from a fresh clone!
+        timeout: 15
+      output:
+        - block: build
+          contains: build-verified

@@ -1,0 +1,55 @@
+name: npm release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the reviewed version tag (requires npm trusted publisher setup)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm pack --dry-run
+      - run: npm run package:check
+      - name: Verify publish tag
+        if: inputs.publish
+        run: node --input-type=module -e "import fs from 'node:fs'; const version = JSON.parse(fs.readFileSync('package.json')).version; if (process.env.GITHUB_REF !== 'refs/tags/v' + version) throw new Error('Select the matching reviewed version tag before publishing.');"
+
+  publish:
+    if: inputs.publish
+    needs: package
+    runs-on: ubuntu-latest
+    environment: npm-release
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - name: Verify trusted publishing prerequisites
+        run: node -e "const v = require('node:child_process').execFileSync('npm', ['--version'], {encoding:'utf8'}).trim().split('.').map(Number); if (v[0] < 11 || (v[0] === 11 && (v[1] < 5 || (v[1] === 5 && v[2] < 1)))) throw new Error('npm 11.5.1+ required');"
+      - run: npm publish --access public

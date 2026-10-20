@@ -1,47 +1,32 @@
 # Roadmap
 
-The first goal is a reliable check of a small Node.js application's documented setup path. This roadmap describes direction, not release dates or promises.
+The goal is a reliable check of a contributor's documented setup path. Version 0.2.0 is prepared in source, not yet published to npm.
 
-## Implemented in the initial source version
+## Implemented
 
-- Marked shell blocks in Markdown.
-- Explicit YAML configuration and an offline execution plan.
-- A source CLI with `init`, `plan`, and `check`.
-- A temporary copy of tracked working-tree files.
-- Ordered commands, background application startup, and an HTTP response expectation.
-- Linux Docker execution, time limits, cleanup, and text/JSON results.
-- A small example application and contributor documentation.
+- Explicit marked Markdown blocks, strict YAML validation, and offline plans.
+- Guided and scripted initialization, prerequisite diagnostics, and immutable config creation.
+- Git-tracked working-tree snapshots and disposable Linux containers.
+- Node.js and Python supervisors, explicit sh/Bash, preserved shell state and timeouts.
+- Named scenarios and explicit test environment values.
+- Disposable service networks, PostgreSQL/Redis examples, and bounded TCP readiness.
+- HTTP status/body/JSON, file existence, and foreground output assertions.
+- Live progress, step durations, failure categories, JSON, GitHub summaries and annotations.
+- Real container integration tests and examples of missing configuration, migrations, and never-ready applications.
+- npm packaging and a manual, tag-checked trusted-publishing workflow.
 
-## Next: make the core easy to trust
+## Next
 
-- Exercise the CLI against a few willing maintainers' real repositories and document the friction.
-- Expand failure coverage for interrupted processes, Docker errors, missing files, and startup timeouts.
-- Improve diagnostics with precise README locations and concise failure context.
-- Add example projects with deliberately broken setup steps and documented fixes.
-- Evaluate stable JSON output and configuration compatibility before promising an API.
-- Maintain reviewed versioned Action releases and prepare an npm publication process.
+- Try the tool with willing maintainers and document adoption friction.
+- Complete maintainer account setup and publish the reviewed npm release.
+- Use integration results to refine service readiness, diagnostics, and compatibility guarantees.
 
 ## Later candidates
 
-These need a concrete use case and design discussion before implementation:
+- Further runtimes and operating-system environments, driven by real repositories.
+- Optional network restrictions, configurable resource budgets, and a supported strategy for applications that need test credentials.
+- Multi-document setup paths and richer application-specific readiness checks.
 
-- Python and other runtimes, including removing Node-specific assumptions in readiness checks.
-- Multiple checks such as file existence or expected command output.
-- Multi-service applications and database readiness.
-- More complete GitHub job summaries and annotations.
-- An explicit shell selection option for projects that require Bash; all accepted shell fences currently execute through `sh`.
-- Additional operating-system environments.
-- Stronger resource controls and optional network restrictions.
-- A supported strategy for applications requiring test credentials.
+## Outside current scope
 
-## Outside the initial scope
-
-- Executing arbitrary untrusted repositories safely.
-- AI-generated setup repairs.
-- Automatically deciding which README commands to run.
-- A hosted service that stores repositories or credentials.
-- Replacing unit tests, end-to-end tests, or dependency security tools.
-
-## Propose a change
-
-Open a [feature request](https://github.com/ergishasani/freshclone/issues/new/choose) with the actual setup problem, a small example, and the behavior you want to verify. Proposals based on a concrete repository are easier to assess than broad platform ideas.
+Executing hostile repositories safely, automatically selecting unmarked commands, AI-generated repairs, a hosted repository/credential service, or replacing application tests.

@@ -115,7 +115,7 @@ test('accepts only local HTTP checks without credentials or fragments', () => {
   }
   assert.equal(
     validateConfig({ ...app, expect: { http: { url: 'http://localhost/health?ready=1' } } }).expect
-      ?.http.status,
+      ?.http?.status,
     200,
   );
 });

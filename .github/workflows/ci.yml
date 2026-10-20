@@ -65,6 +65,27 @@ jobs:
       - name: Run working onboarding example
         shell: bash
         run: node dist/src/cli.js check --root examples/hello-node --json > "$RUNNER_TEMP/freshclone-passing.json"
+      - name: Exercise runtime and service contracts
+        run: npm run test:integration
+      - name: Verify packaged CLI installation and Docker execution
+        run: npm run package:check
+        env:
+          FRESHCLONE_DOCKER_TESTS: '1'
+      - name: Check Python and named scenario examples
+        shell: bash
+        run: |
+          node dist/src/cli.js check --root examples/hello-python
+          node dist/src/cli.js check --root examples/services-python
+          node dist/src/cli.js check --root examples/hello-node --scenario production
+      - name: Verify broken setup examples
+        shell: bash
+        run: |
+          for example in broken-config broken-migration never-ready; do
+            if node dist/src/cli.js check --root "examples/$example"; then
+              echo "The intentionally broken $example example unexpectedly passed."
+              exit 1
+            fi
+          done
       - name: Confirm broken onboarding exits unsuccessfully
         shell: bash
         run: |
