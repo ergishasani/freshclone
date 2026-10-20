@@ -1,0 +1,8 @@
+version: 1
+steps:
+  - block: start
+    background: true
+expect:
+  http:
+    url: http://127.0.0.1:3000/
+    timeout: 2

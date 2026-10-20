@@ -8,17 +8,20 @@ FreshClone checks the setup commands in your README in a disposable Docker envir
 
 An environment variable on a maintainer's laptop, an old dependency folder, or an undocumented configuration file can hide a broken onboarding experience. FreshClone starts with the files tracked by Git and runs the instructions a newcomer would follow.
 
-**Status:** early development, version 0.1.0. The CLI supports Node.js/npm projects in Linux containers. The package is not published to npm; use the source checkout below.
+**Status:** early development. Source version 0.2.0 supports Node.js and Python projects in Linux containers, with named scenarios and disposable database services. This version is not published to npm; use the source checkout below or build a tarball with `npm pack`.
 
 ## What works today
 
 - Read explicitly marked shell blocks directly from a Markdown file.
-- Validate configuration and preview the selected commands without Docker.
+- Guide configuration creation, diagnose prerequisites with `doctor`, and preview selected commands without Docker.
+- Select named scenarios, explicit Bash/sh execution, and Node or Python application images.
+- Start disposable PostgreSQL/Redis services on an isolated network.
+- Assert HTTP status, response content, JSON fields, generated files, and command output.
 - Copy Git-tracked files from the current working tree into a temporary directory.
 - Execute setup steps in order, preserving shell state between steps.
 - Launch an application in the background and check an HTTP endpoint inside the container.
 - Stop the run after configured time limits and clean up the container.
-- Print a readable report or JSON for automation.
+- Show live progress, step durations, categorized failures, JSON, and GitHub summaries/README annotations.
 
 FreshClone does not infer which commands are safe or repair your documentation automatically. You choose the blocks and define the expected result.
 
@@ -100,7 +103,7 @@ You can also generate a starter configuration after marking your README:
 node /path/to/freshclone/dist/src/cli.js init --root /path/to/your-project
 ```
 
-`init` generates a **setup-only** recipe: every marked block is a foreground step, and no HTTP expectation is added. It never overwrites an existing file. For a web application, set the final start step to `background: true` and add `expect.http`, using the complete example above. A long-running server left as a foreground step will time out.
+`init` guides terminal users through block selection, runtime, shell, image, and optional server readiness. It never overwrites an existing file. For scripted setup, use `init --no-interactive --blocks install,start --start start --url http://127.0.0.1:3000/`. Without server selection it generates a setup-only recipe. A long-running server left as a foreground step will time out.
 
 ### 3. Preview, then run
 
@@ -117,21 +120,25 @@ The source project is not modified by the run. Treat command output as potential
 
 ## CLI reference
 
-| Command            | Purpose                                                     | Docker required |
-| ------------------ | ----------------------------------------------------------- | --------------- |
-| `freshclone init`  | Generate setup-only configuration from marked README blocks | No              |
-| `freshclone plan`  | Validate configuration and show the selected commands       | No              |
-| `freshclone check` | Run the setup and application check                         | Yes             |
+| Command             | Purpose                                                 | Docker required           |
+| ------------------- | ------------------------------------------------------- | ------------------------- |
+| `freshclone init`   | Guide or script configuration from marked README blocks | No                        |
+| `freshclone doctor` | Diagnose Git, Docker, configuration, and marked blocks  | Yes (checks availability) |
+| `freshclone plan`   | Validate configuration and show the selected commands   | No                        |
+| `freshclone check`  | Run the setup and application check                     | Yes                       |
 
 In a source checkout, replace `freshclone` with `node dist/src/cli.js`.
 
-| Flag                 | Purpose                                             |
-| -------------------- | --------------------------------------------------- |
-| `--root <directory>` | Select the project directory                        |
-| `--config <file>`    | Select a configuration file                         |
-| `--json`             | Emit JSON for `plan` or `check`; `init` prints text |
-| `--help`             | Show command usage                                  |
-| `--version`          | Show the current version                            |
+| Flag                 | Purpose                                        |
+| -------------------- | ---------------------------------------------- |
+| `--root <directory>` | Select the project directory                   |
+| `--config <file>`    | Select a configuration file                    |
+| `--json`             | Emit JSON for `plan`, `doctor`, or `check`     |
+| `--scenario <name>`  | Select a named setup path                      |
+| `--github`           | Write GitHub summaries and failure annotations |
+| `--quiet`            | Suppress live progress                         |
+| `--help`             | Show command usage                             |
+| `--version`          | Show the current version                       |
 
 See the [configuration guide](docs/configuration.md) for the execution model and practical limits.
 
@@ -159,7 +166,7 @@ jobs:
       - uses: ergishasani/freshclone@v0.1.0
 ```
 
-The composite action builds FreshClone from source and runs `check` in your checked-out project. It accepts `root` and `config` inputs for projects in a subdirectory or a differently named configuration file. It requires a Linux runner with Docker and registry access.
+The composite action builds FreshClone from source and runs `check` in your checked-out project. The current source Action also writes job summaries and README annotations and accepts `scenario`. The released v0.1.0 Action accepts `root` and `config` inputs for projects in a subdirectory or a differently named configuration file. It requires a Linux runner with Docker and registry access.
 
 `@v0.1.0` selects the first versioned release. Replace it with a reviewed FreshClone commit SHA when adopting it in a workflow that needs pinned dependencies. Use `@main` only when you intend to follow ongoing development.
 
@@ -184,7 +191,21 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md), browse [open issues](https://gith
 
 [Runme](https://runme.dev/) also makes Markdown commands executable. FreshClone focuses on one question: can a contributor start this application from the documented setup steps? Explicit README blocks, a temporary copy of tracked files, and an application response check are the core of this project.
 
-Additional runtimes, operating systems, database orchestration, richer reports, and releases on npm are planned areas for discussion, not current capabilities.
+The source now includes Python, database services, richer assertions, scenarios, and GitHub reporting. Additional operating systems and further runtimes remain future work. See the [configuration guide](docs/configuration.md) and [npm release guide](docs/releases.md).
+
+## Explore the examples
+
+| Example                     | Demonstrates                                         | Expected result |
+| --------------------------- | ---------------------------------------------------- | --------------- |
+| `examples/hello-node`       | npm setup and HTTP; optional `--scenario production` | Pass            |
+| `examples/hello-python`     | Python-only image and JSON readiness                 | Pass            |
+| `examples/services-python`  | PostgreSQL and Redis connections                     | Pass            |
+| `examples/broken-node`      | Application exits with missing configuration         | Fail            |
+| `examples/broken-config`    | Missing `.env` copy step, with documented fix        | Fail            |
+| `examples/broken-migration` | Missing SQLite migration, with documented fix        | Fail            |
+| `examples/never-ready`      | Server stays alive but returns 503                   | Fail            |
+
+Run `node dist/src/cli.js check --root examples/hello-python`, or substitute another example directory. New examples must be tracked by Git before checking a source checkout.
 
 ## Security and license
 

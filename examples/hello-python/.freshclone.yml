@@ -1,0 +1,14 @@
+version: 1
+runtime: python
+timeout: 30
+steps:
+  - block: install
+  - block: start
+    background: true
+expect:
+  files: [__pycache__/app.cpython-313.pyc]
+  http:
+    url: http://127.0.0.1:8000/
+    timeout: 10
+    json:
+      ready: true

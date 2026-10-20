@@ -25,11 +25,12 @@ FreshClone intentionally runs shell commands controlled by a repository. A succe
 - Run checks only for repositories you trust.
 - Docker is a disposable execution environment, not a guarantee of isolation from hostile workloads.
 - The Docker daemon has authority on its host. Use appropriate host and runner isolation for your environment.
-- FreshClone does not inject host credentials, environment variables, or the Docker socket into the application container.
+- FreshClone does not inject host credentials, host environment variables, or the Docker socket into application/service containers. Explicit configuration `env` values are passed to the application shell or named service; use synthetic test data.
 - Git-tracked current working-tree files are copied into temporary storage for execution. `.env` and `.env.*` files are excluded except for `.env.example`, `.env.sample`, and `.env.template`. This filename filter is not secret scanning: credentials in other tracked files or example files are still copied.
 - Symbolic links in the execution snapshot are rejected to avoid copying through unexpected paths.
 - Application commands can access the network and download dependencies. The initial release does not provide network isolation.
-- The container has a read-only root filesystem, a writable temporary workspace, a bounded `/tmp`, dropped capabilities, and limits of 1 GiB memory, two CPUs, and 256 processes. These defaults reduce resource consumption; they do not establish a hostile-code sandbox.
+- Optional services run on a unique bridge network without published host ports or host directory mounts. Their filesystems remain writable for database initialization; anonymous image volumes are removed with their containers. Each service has 512 MiB memory, one CPU, 256 processes, and no-new-privileges. TCP readiness verifies connectivity, not authentication or database integrity.
+- The application container has a read-only root filesystem, a writable temporary workspace, a bounded `/tmp`, dropped capabilities, and limits of 1 GiB memory, two CPUs, and 256 processes. These defaults reduce resource consumption; they do not establish a hostile-code sandbox.
 - Logs are raw application output and may contain credentials, private paths, or sensitive project data. Reports keep only the last 64 KiB per step, while per-step capture files use the container's bounded temporary storage. Review logs and JSON output before publishing them; no automatic redaction is performed.
 - README commands, image references, configuration, and dependencies are all part of the code you must review.
 

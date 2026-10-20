@@ -13,6 +13,21 @@ export interface HttpExpectation {
   status: number;
   /** Maximum number of seconds to wait for the expected response. */
   timeout: number;
+  contains?: string;
+  json?: Record<string, unknown>;
+}
+
+export interface ServiceConfig {
+  image: string;
+  env?: Record<string, string>;
+  port: number;
+  timeout: number;
+}
+
+export interface Expectations {
+  http?: HttpExpectation;
+  files?: string[];
+  output?: Array<{ block: string; contains: string }>;
 }
 
 export interface FreshcloneConfig {
@@ -22,7 +37,12 @@ export interface FreshcloneConfig {
   /** Maximum seconds allowed for each setup step. */
   timeout: number;
   steps: FreshcloneStep[];
-  expect?: { http: HttpExpectation };
+  expect?: Expectations;
+  runtime?: 'node' | 'python';
+  shell?: 'sh' | 'bash';
+  env?: Record<string, string>;
+  services?: Record<string, ServiceConfig>;
+  scenario?: string;
 }
 
 const blockIdPattern = /^[A-Za-z][A-Za-z0-9_-]*$/;
@@ -60,10 +80,54 @@ function integer(value: unknown, minimum: number, maximum: number, name: string)
 }
 
 /** Validate and normalize the intentionally small v1 configuration format. */
-export function validateConfig(input: unknown): FreshcloneConfig {
-  const raw = object(input, 'Configuration');
-  knownKeys(raw, ['version', 'readme', 'image', 'timeout', 'steps', 'expect'], 'configuration');
+export function validateConfig(input: unknown, scenario?: string): FreshcloneConfig {
+  let raw = object(input, 'Configuration');
+  const fields = [
+    'version',
+    'readme',
+    'image',
+    'timeout',
+    'steps',
+    'expect',
+    'runtime',
+    'shell',
+    'env',
+    'services',
+  ];
+  knownKeys(raw, [...fields, 'scenarios'], 'configuration');
   if (raw.version !== 1) throw new Error('version must be 1.');
+  if (raw.scenarios !== undefined) {
+    const scenarios = object(raw.scenarios, 'scenarios');
+    if (!Object.keys(scenarios).length) throw new Error('scenarios must not be empty.');
+    const { scenarios: _scenarios, ...base } = raw;
+    for (const [name, value] of Object.entries(scenarios)) {
+      if (!blockIdPattern.test(name)) throw new Error(`Invalid scenario name "${name}".`);
+      const overrides = object(value, `scenarios.${name}`);
+      knownKeys(
+        overrides,
+        fields.filter((field) => !['version', 'readme'].includes(field)),
+        `scenarios.${name}`,
+      );
+      validateConfig({ ...base, ...overrides });
+    }
+    if (scenario !== undefined) {
+      if (!Object.hasOwn(scenarios, scenario))
+        throw new Error(
+          `Unknown scenario "${scenario}". Choose: ${Object.keys(scenarios).join(', ')}.`,
+        );
+      raw = { ...base, ...object(scenarios[scenario], `scenarios.${scenario}`) };
+    } else {
+      raw = base;
+      if (raw.steps === undefined)
+        throw new Error(`Choose --scenario: ${Object.keys(scenarios).join(', ')}.`);
+    }
+  } else if (scenario !== undefined) {
+    throw new Error(`Unknown scenario "${scenario}"; no scenarios are configured.`);
+  }
+  if (raw.runtime !== undefined && !['node', 'python'].includes(raw.runtime as string))
+    throw new Error('runtime must be node or python.');
+  if (raw.shell !== undefined && !['sh', 'bash'].includes(raw.shell as string))
+    throw new Error('shell must be sh or bash.');
 
   const readme = nonemptyString(raw.readme === undefined ? 'README.md' : raw.readme, 'readme');
   if (
@@ -79,7 +143,11 @@ export function validateConfig(input: unknown): FreshcloneConfig {
   }
 
   const image = nonemptyString(
-    raw.image === undefined ? 'node:24-bookworm-slim' : raw.image,
+    raw.image === undefined
+      ? raw.runtime === 'python'
+        ? 'python:3.13-slim'
+        : 'node:24-bookworm-slim'
+      : raw.image,
     'image',
   );
   if (image.startsWith('-') || /\s/.test(image)) {
@@ -117,33 +185,59 @@ export function validateConfig(input: unknown): FreshcloneConfig {
   });
 
   const config: FreshcloneConfig = { version: 1, readme, image, timeout, steps };
+  if (raw.runtime !== undefined) config.runtime = raw.runtime as 'node' | 'python';
+  if (raw.shell !== undefined) config.shell = raw.shell as 'sh' | 'bash';
+  if (scenario) config.scenario = scenario;
+  if (raw.env !== undefined) config.env = environment(raw.env, 'env');
+  if (raw.services !== undefined) {
+    config.services = {};
+    for (const [name, value] of Object.entries(object(raw.services, 'services'))) {
+      if (!/^[a-z][a-z0-9-]{0,62}$/.test(name) || ['localhost', 'host', 'gateway'].includes(name))
+        throw new Error(`Invalid service name "${name}".`);
+      const service = object(value, `services.${name}`);
+      knownKeys(service, ['image', 'env', 'port', 'timeout'], `services.${name}`);
+      const serviceImage = nonemptyString(service.image, `services.${name}.image`);
+      if (serviceImage.startsWith('-') || /\s/.test(serviceImage))
+        throw new Error(`services.${name}.image must be a Docker image reference.`);
+      config.services[name] = {
+        image: serviceImage,
+        port: integer(service.port, 1, 65535, `services.${name}.port`),
+        timeout: integer(service.timeout ?? 30, 1, 300, `services.${name}.timeout`),
+        ...(service.env === undefined
+          ? {}
+          : { env: environment(service.env, `services.${name}.env`) }),
+      };
+    }
+  }
 
   if (raw.expect !== undefined) {
-    if (!hasBackground) throw new Error('expect.http is only allowed with a background step.');
     const expect = object(raw.expect, 'expect');
-    knownKeys(expect, ['http'], 'expect');
-    const http = object(expect.http, 'expect.http');
-    knownKeys(http, ['url', 'status', 'timeout'], 'expect.http');
-    const url = nonemptyString(http.url, 'expect.http.url');
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      throw new Error('expect.http.url must be a valid HTTP URL.');
-    }
-    if (
-      parsed.protocol !== 'http:' ||
-      !['127.0.0.1', 'localhost'].includes(parsed.hostname) ||
-      parsed.username ||
-      parsed.password ||
-      url.includes('#')
-    ) {
-      throw new Error(
-        'expect.http.url must use http://127.0.0.1 or http://localhost without credentials or a fragment.',
-      );
-    }
-    config.expect = {
-      http: {
+    knownKeys(expect, ['http', 'files', 'output'], 'expect');
+    if (!Object.keys(expect).length) throw new Error('expect must not be empty.');
+    config.expect = {};
+    if (expect.http !== undefined) {
+      if (!hasBackground) throw new Error('expect.http is only allowed with a background step.');
+      const http = object(expect.http, 'expect.http');
+      knownKeys(http, ['url', 'status', 'timeout', 'contains', 'json'], 'expect.http');
+      const url = nonemptyString(http.url, 'expect.http.url');
+      let parsed: URL;
+      try {
+        parsed = new URL(url);
+      } catch {
+        throw new Error('expect.http.url must be a valid HTTP URL.');
+      }
+      if (
+        parsed.protocol !== 'http:' ||
+        !['127.0.0.1', 'localhost'].includes(parsed.hostname) ||
+        parsed.username ||
+        parsed.password ||
+        url.includes('#')
+      ) {
+        throw new Error(
+          'expect.http.url must use http://127.0.0.1 or http://localhost without credentials or a fragment.',
+        );
+      }
+      config.expect.http = {
         url,
         status: integer(
           http.status === undefined ? 200 : http.status,
@@ -157,13 +251,104 @@ export function validateConfig(input: unknown): FreshcloneConfig {
           300,
           'expect.http.timeout',
         ),
-      },
-    };
-  } else if (hasBackground) {
+      };
+      if (http.contains !== undefined)
+        config.expect.http.contains = nonemptyString(http.contains, 'expect.http.contains');
+      if (http.json !== undefined) {
+        const json = object(http.json, 'expect.http.json');
+        if (
+          !Object.keys(json).length ||
+          Object.keys(json).some(
+            (key) =>
+              !key ||
+              key
+                .split('.')
+                .some((part) => !part || ['__proto__', 'constructor', 'prototype'].includes(part)),
+          )
+        )
+          throw new Error('expect.http.json must contain safe dotted field paths.');
+        assertJson(json);
+        config.expect.http.json = json;
+      }
+    }
+    if (expect.files !== undefined) {
+      if (!Array.isArray(expect.files) || !expect.files.length)
+        throw new Error('expect.files must be a nonempty array.');
+      config.expect.files = expect.files.map((value: unknown) => {
+        const file = nonemptyString(value, 'expect.files entry');
+        if (
+          path.posix.isAbsolute(file) ||
+          path.win32.isAbsolute(file) ||
+          /^[A-Za-z]:/.test(file) ||
+          file.includes('\\') ||
+          file.split('/').includes('..')
+        )
+          throw new Error('expect.files paths must stay inside the workspace.');
+        return file;
+      });
+    }
+    if (expect.output !== undefined) {
+      if (!Array.isArray(expect.output) || !expect.output.length)
+        throw new Error('expect.output must be a nonempty array.');
+      config.expect.output = expect.output.map((value: unknown) => {
+        const entry = object(value, 'expect.output entry');
+        knownKeys(entry, ['block', 'contains'], 'expect.output');
+        const block = nonemptyString(entry.block, 'expect.output.block');
+        if (!seen.has(block))
+          throw new Error(`expect.output references unselected block "${block}".`);
+        if (steps.find((step) => step.block === block)?.background)
+          throw new Error(
+            'expect.output requires a foreground block; use HTTP content for server readiness.',
+          );
+        return { block, contains: nonemptyString(entry.contains, 'expect.output.contains') };
+      });
+    }
+  }
+  if (hasBackground && !config.expect?.http) {
     throw new Error('A background step requires expect.http.');
   }
 
   return config;
+}
+
+function environment(input: unknown, name: string): Record<string, string> {
+  const env = object(input, name);
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (
+      !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ||
+      [
+        'NODE_OPTIONS',
+        'NODE_PATH',
+        'PYTHONPATH',
+        'PYTHONHOME',
+        'LD_PRELOAD',
+        'LD_LIBRARY_PATH',
+        'PATH',
+        'HOME',
+        'BASH_ENV',
+        'ENV',
+        'SHELLOPTS',
+      ].includes(key) ||
+      key.startsWith('FRESHCLONE_')
+    )
+      throw new Error(`${name}.${key} is a reserved or invalid environment variable.`);
+    if (typeof value !== 'string' || value.includes('\0'))
+      throw new Error(`${name}.${key} must be a string without NUL bytes.`);
+    result[key] = value;
+  }
+  return result;
+}
+
+function assertJson(value: unknown, ancestors = new Set<object>(), depth = 0): void {
+  if (depth > 30) throw new Error('expect.http.json exceeds the maximum nesting depth of 30.');
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
+  if (typeof value === 'number' && Number.isFinite(value)) return;
+  if (typeof value !== 'object' || !value || ancestors.has(value))
+    throw new Error('expect.http.json must contain finite, acyclic JSON values.');
+  ancestors.add(value);
+  for (const child of Object.values(value)) assertJson(child, ancestors, depth + 1);
+  ancestors.delete(value);
 }
 
 function assertInside(root: string, file: string, name: string): void {
@@ -177,6 +362,7 @@ function assertInside(root: string, file: string, name: string): void {
 export async function loadProject(
   root: string,
   configPath = '.freshclone.yml',
+  scenario?: string,
 ): Promise<{ config: FreshcloneConfig; blocks: ReadmeBlock[]; readmePath: string }> {
   const rootPath = await realpath(root);
   const requestedConfig = path.resolve(rootPath, configPath);
@@ -190,7 +376,7 @@ export async function loadProject(
       `Invalid FreshClone YAML: ${document.errors.map((error) => error.message).join('; ')}`,
     );
   }
-  const config = validateConfig(document.toJS({ maxAliasCount: 20 }) as unknown);
+  const config = validateConfig(document.toJS({ maxAliasCount: 20 }) as unknown, scenario);
   const requestedReadme = path.resolve(rootPath, config.readme.replace(/[\\/]/g, path.sep));
   assertInside(rootPath, requestedReadme, 'README file');
   const readmeFile = await realpath(requestedReadme);

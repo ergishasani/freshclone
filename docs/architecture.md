@@ -20,7 +20,7 @@ README + .freshclone.yml
  Disposable Linux container
           |
           v
-  Setup -> start -> HTTP check
+  Services -> setup -> start -> assertions
           |
           v
  Report and clean up
@@ -50,7 +50,7 @@ Cleanup and timeouts belong to the runner lifecycle. Error paths need the same c
 
 Parse arguments, choose `init`, `plan`, or `check`, and render results in text or JSON. Keep machine-readable output separate from human guidance so callers can consume it reliably.
 
-`init` creates a setup-only configuration based on existing markers in README order. All generated steps are foreground steps, with no HTTP expectation; the user must add background startup and readiness configuration for a server. It does not rewrite README instructions or overwrite existing configuration. `plan` is a useful entry point for validating configuration without Git or Docker.
+`init` selects existing markers in README order by default. Interactive or explicit options can select a subset, runtime and shell, and a final background server step with an HTTP expectation. Without a server selection, the recipe is setup-only. It does not rewrite README instructions or overwrite existing configuration. `plan` is a useful entry point for validating configuration without Git or Docker.
 
 The container helper captures each step's combined output in a separate file under `/tmp` and includes the last 64 KiB in the report. Keeping logs separate avoids relying on the order in which process output and lifecycle events arrive. Output is raw and unredacted; a setup-only pass does not verify application readiness.
 
@@ -70,7 +70,11 @@ Useful changes can begin in one area:
 - A better report with explicit expected output.
 - An example project demonstrating a real setup problem.
 
-The initial runtime assumes Node.js/npm in a Linux image, and its HTTP readiness implementation depends on Node being available in the container. Support for another runtime requires reviewing this assumption across validation, runner behavior, examples, and documentation.
+The host CLI uses Node.js. The application image selects either the built-in-only Node supervisor (`assets/container-runner.mjs`) or Python supervisor (`assets/container-runner.py`). Both preserve shell state, enforce timeouts, poll services/HTTP, run file/output assertions, and emit the same report schema. Python images do not need Node. Contract integration tests exercise both supervisors against real Docker containers.
+
+The runner owns service containers and their unique Docker network, passes only explicit configuration, and cleans all resources after each run. Supervisors check service TCP readiness before executing documentation; application-specific database checks remain README steps.
+
+`src/init.ts` handles guided/scripted initialization; `src/doctor.ts` collects read-only prerequisite diagnostics; `src/reporting.ts` escapes GitHub summaries and workflow annotations. The CLI keeps progress on stderr and JSON on stdout. Scenario overrides are resolved and validated before block selection, with replacement rather than implicit deep merging.
 
 The project does not need a general plugin framework before there are concrete extensions that require one.
 

@@ -18,3 +18,14 @@ Start the application, then open <http://localhost:3000/>:
 ```sh
 npm start
 ```
+
+Optional production syntax validation:
+
+<!-- freshclone:build -->
+
+```sh
+node --check server.mjs
+echo build-verified
+```
+
+Use `--scenario production` to include this block before starting the app. The default path remains install → start.

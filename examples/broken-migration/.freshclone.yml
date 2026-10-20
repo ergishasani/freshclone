@@ -1,0 +1,10 @@
+version: 1
+runtime: python
+steps:
+  - block: prepare
+  - block: start
+    background: true
+expect:
+  http:
+    url: http://127.0.0.1:8000/
+    timeout: 3

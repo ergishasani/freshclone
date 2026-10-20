@@ -14,6 +14,10 @@ inputs:
     description: Configuration path relative to the project root.
     required: false
     default: .freshclone.yml
+  scenario:
+    description: Optional named setup scenario.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -44,4 +48,10 @@ runs:
         FRESHCLONE_ACTION_PATH: ${{ github.action_path }}
         FRESHCLONE_PROJECT_ROOT: ${{ inputs.root }}
         FRESHCLONE_CONFIG: ${{ inputs.config }}
-      run: node "$FRESHCLONE_ACTION_PATH/dist/src/cli.js" check --root "$FRESHCLONE_PROJECT_ROOT" --config "$FRESHCLONE_CONFIG"
+        FRESHCLONE_SCENARIO: ${{ inputs.scenario }}
+      run: |
+        args=(check --root "$FRESHCLONE_PROJECT_ROOT" --config "$FRESHCLONE_CONFIG" --github)
+        if [ -n "$FRESHCLONE_SCENARIO" ]; then
+          args+=(--scenario "$FRESHCLONE_SCENARIO")
+        fi
+        node "$FRESHCLONE_ACTION_PATH/dist/src/cli.js" "${args[@]}"

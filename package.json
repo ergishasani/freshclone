@@ -1,7 +1,6 @@
 {
   "name": "@ergishasani/freshclone",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.2.0",
   "description": "Test your README setup instructions in a clean environment.",
   "type": "module",
   "license": "MIT",
@@ -23,6 +22,8 @@
   "files": [
     "dist/src",
     "assets",
+    "docs/configuration.md",
+    "docs/releases.md",
     "LICENSE",
     "README.md"
   ],
@@ -32,7 +33,10 @@
     "test": "npm run build && node --test dist/test/*.test.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run typecheck && npm run format:check && npm test"
+    "check": "npm run typecheck && npm run format:check && npm test",
+    "prepack": "npm run build",
+    "test:integration": "npm run build && node scripts/integration.mjs",
+    "package:check": "node scripts/package-check.mjs"
   },
   "dependencies": {
     "mdast-util-from-markdown": "^2.0.2",
@@ -42,5 +46,9 @@
     "@types/node": "^22.19.0",
     "prettier": "^3.6.2",
     "typescript": "^5.9.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

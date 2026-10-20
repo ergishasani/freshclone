@@ -31,7 +31,7 @@ To exercise the container runner, start a Docker daemon configured for Linux con
 node dist/src/cli.js check --root examples/hello-node
 ```
 
-The first run may need to pull the configured image from the registry.
+The first run may need to pull the configured image from the registry. Run `npm run test:integration` to exercise both runtime supervisors and disposable PostgreSQL/Redis services. Docker must be available; this command explicitly enables container tests, while ordinary `npm test` skips them. Linux CI runs the same integration suite.
 
 ## Find work
 
